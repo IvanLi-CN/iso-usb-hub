@@ -1,0 +1,3 @@
+[submodule "gc9d01"]
+	path = gc9d01
+	url = git@github.com:IvanLi-CN/gc9d01-rs.git

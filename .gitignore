@@ -1,0 +1,9 @@
+debug/
+target/
+/logs/
+Cargo.lock
+
+/.idea
+
+.DS_Store
+*.FCBak
