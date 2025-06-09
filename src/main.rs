@@ -1,5 +1,7 @@
+// src/main.rs
 #![no_std]
 #![no_main]
+
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as EmbassySpiDevice;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
@@ -8,13 +10,25 @@ use embassy_stm32::spi::{Config as SpiConfig, Spi as Stm32Spi};
 use embassy_stm32::time::Hertz;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embedded_graphics::{pixelcolor::Rgb565, prelude::WebColors};
+use embedded_alloc::LlffHeap as Heap;
+use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::prelude::WebColors;
 use gc9d01::{Config as DisplayDriverConfig, GC9D01, Orientation, Timer as Gc9d01Timer};
 use static_cell::StaticCell;
 
+use core::ptr;
 use {defmt_rtt as _, panic_probe as _};
 
 use defmt::*;
+use display::dashboard::Dashboard;
+mod display;
+
+extern crate alloc;
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+
+// Removed Framebuffer definitions
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -42,6 +56,14 @@ async fn main(_spawner: Spawner) {
     }
     let p = embassy_stm32::init(config);
 
+    // Initialize the allocator BEFORE you use it
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 8192;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
+    }
+
     struct EmbassyDisplayTimer;
     impl Gc9d01Timer for EmbassyDisplayTimer {
         async fn after_millis(milliseconds: u64) {
@@ -64,7 +86,7 @@ async fn main(_spawner: Spawner) {
     let rst_pin = Output::new(p.PC4, Level::Low, Speed::VeryHigh);
 
     let mut spi_config = SpiConfig::default();
-    spi_config.frequency = Hertz(16_000_000);
+    spi_config.frequency = Hertz(48_000_000);
 
     let spi_bus = Stm32Spi::new_txonly(
         spi_peripheral_instance,
@@ -92,9 +114,9 @@ async fn main(_spawner: Spawner) {
     >::new(spi_bus_mutex_ref, cs_pin_output);
 
     let display_config = DisplayDriverConfig {
-        width: 40,
-        height: 160,
-        orientation: Orientation::Landscape,
+        width: 160,
+        height: 40,
+        orientation: Orientation::PortraitSwapped,
         rgb: false,
         inverted: false,
         dx: 0,
@@ -122,16 +144,56 @@ async fn main(_spawner: Spawner) {
         Ok(_) => info!("Display initialized successfully!"),
         Err(e) => error!("Display initialization failed: {:?}", e),
     }
+    info!("Display initialization complete."); // Added log
 
+    // Instantiate Dashboard
+    let mut dashboard = Dashboard::new();
+
+    display.fill_color(Rgb565::CSS_BLACK).await.unwrap();
+
+    info!("Drawing test pattern.");
+    let colors = [
+        Rgb565::CSS_WHITE,
+        Rgb565::CSS_YELLOW,
+        Rgb565::CSS_CYAN,
+        Rgb565::CSS_GREEN,
+        Rgb565::CSS_MAGENTA,
+        Rgb565::CSS_RED,
+        Rgb565::CSS_BLUE,
+        Rgb565::CSS_BLACK,
+    ];
+
+    // Each stripe is 5 pixels wide and 160 pixels high
+    const STRIPE_WIDTH: u16 = 20;
+    const STRIPE_HEIGHT: u16 = 40;
+
+    // Create a buffer for one stripe's pixel data
+    let mut stripe_pixels = [Rgb565::CSS_BLACK; (STRIPE_WIDTH * STRIPE_HEIGHT) as usize];
+
+    for (i, color) in colors.iter().enumerate() {
+        let x = i as u16 * STRIPE_WIDTH;
+
+        // Fill the stripe buffer with the current color
+        for pixel in stripe_pixels.iter_mut() {
+            *pixel = *color;
+        }
+
+        // Write the pixel data for the current stripe
+        display
+            .write_area(x, 0, STRIPE_WIDTH, STRIPE_HEIGHT, &stripe_pixels)
+            .await
+            .unwrap();
+    }
+
+    embassy_time::Timer::after_secs(1).await;
     loop {
-        info!("Example finished. Looping.");
-        display.fill_color(Rgb565::CSS_WHITE).await.unwrap();
-        embassy_time::Timer::after_secs(1).await;
-        display.fill_color(Rgb565::CSS_RED).await.unwrap();
-        embassy_time::Timer::after_secs(1).await;
-        display.fill_color(Rgb565::CSS_GREEN).await.unwrap();
-        embassy_time::Timer::after_secs(1).await;
-        display.fill_color(Rgb565::CSS_BLUE).await.unwrap();
+        // Update Dashboard data (using example data for now)
+        dashboard.update_data(12.34, 5.67, 8.90, 1.23, 4.56, 7.89);
+        // Draw Dashboard directly to the display
+        // This requires Dashboard::draw to accept GC9D01
+        dashboard.draw(&mut display).await.unwrap();
+
+        // Wait for a while before updating
         embassy_time::Timer::after_secs(1).await;
     }
 }

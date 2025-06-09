@@ -4,6 +4,15 @@ edition = "2024"
 name = "iso-usb-hub"
 version = "0.1.0"
 
+[[bin]]
+name = "iso-usb-hub"
+path = "src/main.rs"
+test = false
+
+[features]
+default = ["alloc"]
+alloc = []
+
 [build-dependencies]
 # Add this to enable build.rs
 # This is needed to read environment variables at compile time
@@ -11,7 +20,6 @@ version = "0.1.0"
 # See https://doc.rust-lang.org/cargo/reference/build-scripts.html
 # for more details.
 # This is a common pattern in embedded Rust to inject configuration.
-# The `build.rs` script will be created in the next step.
 # It will read USB_VID, USB_PID, and WEBUSB_LANDING_URL
 # and make them available as compile-time constants.
 
@@ -53,6 +61,7 @@ cortex-m = { version = "0.7.7", features = [
 ] }
 cortex-m-rt = "0.7.5"
 embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 heapless = { version = "0.8", default-features = false }
 portable-atomic = { version = "1.11.0", features = ["critical-section"] }
@@ -63,7 +72,8 @@ embedded-alloc = "0.6.0"
 embedded-io-async = { version = "0.6.1" }
 binrw = { version = "0.15", default-features = false }
 
-embedded-graphics = "0.8.1"
+# Changed embedded-graphics version and features
+embedded-graphics = "0.8.1" # Changed version and removed features
 gc9d01 = { version = "*", path = "./gc9d01", features = ["async", "defmt"] }
 ina226 = { version = "0.3.0", features = ["async"] }
 
