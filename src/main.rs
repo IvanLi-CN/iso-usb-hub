@@ -5,9 +5,10 @@
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as EmbassySpiDevice;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
-use embassy_stm32::mode;
+use embassy_stm32::i2c::{self, I2c}; // Import i2c module, I2c struct
 use embassy_stm32::spi::{Config as SpiConfig, Spi as Stm32Spi};
-use embassy_stm32::time::Hertz;
+use embassy_stm32::time::{Hertz, khz}; // Import khz and Hertz
+use embassy_stm32::{bind_interrupts, mode, peripherals}; // Import bind_interrupts, mode, peripherals
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_alloc::LlffHeap as Heap;
@@ -19,6 +20,11 @@ use static_cell::StaticCell;
 use core::ptr;
 use {defmt_rtt as _, panic_probe as _};
 
+// Add imports for INA226 and shared bus I2C device
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice as EmbassyI2cDevice; // Alias for clarity
+use ina226::INA226;
+// Removed unused imports: AsyncI2c
+
 use defmt::*;
 use display::dashboard::Dashboard;
 mod display;
@@ -28,7 +34,13 @@ extern crate alloc;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-// Removed Framebuffer definitions
+// This marks the entrypoint of our application and binds interrupts.
+bind_interrupts!(
+    struct Irqs {
+        I2C1_EV => i2c::EventInterruptHandler<peripherals::I2C1>;
+        I2C1_ER => i2c::ErrorInterruptHandler<peripherals::I2C1>;
+    }
+);
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -63,6 +75,51 @@ async fn main(_spawner: Spawner) {
         static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { HEAP.init(ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
+
+    // Initialize I2C1
+    let i2c_scl = p.PA15; // SCL pin for I2C1
+    let i2c_sda = p.PB7; // SDA pin for I2C1
+
+    let mut i2c_config = i2c::Config::default(); // Use full path for Config
+    // Configure I2C speed if needed, default is 100kHz
+    // i2c_config.speed = embassy_stm32::i2c::Speed::Standard; // Or Fast, FastPlus
+
+    // Initialize I2C1 with correct parameter order
+    let i2c1 = I2c::new(
+        p.I2C1,     // Instance
+        i2c_scl,    // SCL pin
+        i2c_sda,    // SDA pin
+        Irqs,       // Interrupts struct
+        p.DMA1_CH2, // RX DMA
+        p.DMA1_CH3, // TX DMA
+        khz(100),   // Frequency
+        i2c_config, // Config parameter
+    );
+
+    // Create a static mutex for the I2C bus using the full I2c type
+    // Create a static mutex for the I2C bus using the full I2c type
+    static I2C1_BUS_CELL: StaticCell<Mutex<CriticalSectionRawMutex, I2c<'static, mode::Async>>> =
+        StaticCell::new(); // Use full I2c type
+    let i2c1_bus_mutex_ref = I2C1_BUS_CELL.init(Mutex::new(i2c1));
+
+    // Initialize INA226 sensors using I2cDevice for shared bus access
+    // Create I2cDevice instances from the shared bus mutex with correct type parameters
+    let i2c_device_1 = EmbassyI2cDevice::new(i2c1_bus_mutex_ref);
+    let i2c_device_2 = EmbassyI2cDevice::new(i2c1_bus_mutex_ref);
+    let i2c_device_3 = EmbassyI2cDevice::new(i2c1_bus_mutex_ref);
+
+    // Initialize INA226 sensors with the I2cDevice instances
+    let mut ina226_1 = INA226::new(i2c_device_1, 0x40);
+    let mut ina226_2 = INA226::new(i2c_device_2, 0x41);
+    let mut ina226_3 = INA226::new(i2c_device_3, 0x44);
+
+    // Configure INA226 sensors (optional, default config is often fine)
+    // Example: Set calibration register for current/power readings
+    ina226_1.callibrate(0.005, 4.0).await.unwrap();
+    ina226_2.callibrate(0.010, 4.0).await.unwrap();
+    ina226_3.callibrate(0.010, 4.0).await.unwrap();
+
+    info!("INA226 sensors initialized.");
 
     struct EmbassyDisplayTimer;
     impl Gc9d01Timer for EmbassyDisplayTimer {
@@ -185,15 +242,38 @@ async fn main(_spawner: Spawner) {
             .unwrap();
     }
 
+    // Initial delay before starting the loop
     embassy_time::Timer::after_secs(1).await;
+
     loop {
-        // Update Dashboard data (using example data for now)
-        dashboard.update_data(12.34, 5.67, 8.90, 1.23, 4.56, 7.89);
+        // Read data from INA226 sensors
+        // Use correct async function names and handle Option<f64> return types
+        let voltage1 = ina226_1.bus_voltage_millivolts().await.unwrap_or(0.0);
+        let current1 = ina226_1.current_amps().await.unwrap_or(None).unwrap_or(0.0);
+        let power1 = ina226_1.power_watts().await.unwrap_or(None).unwrap_or(0.0);
+
+        let voltage2 = ina226_2.bus_voltage_millivolts().await.unwrap_or(0.0);
+        let current2 = ina226_2.current_amps().await.unwrap_or(None).unwrap_or(0.0);
+        let power2 = ina226_2.power_watts().await.unwrap_or(None).unwrap_or(0.0);
+
+        let voltage3 = ina226_3.bus_voltage_millivolts().await.unwrap_or(0.0);
+        let current3 = ina226_3.current_amps().await.unwrap_or(None).unwrap_or(0.0);
+        let power3 = ina226_3.power_watts().await.unwrap_or(None).unwrap_or(0.0);
+
+        // Prepare data for Dashboard, converting f64 to f32
+        let sensor_data = [
+            ((voltage1 / 1000.0) as f32, current1 as f32, power1 as f32),
+            ((voltage2 / 1000.0) as f32, current2 as f32, power2 as f32),
+            ((voltage3 / 1000.0) as f32, current3 as f32, power3 as f32),
+        ];
+
+        // Update Dashboard data
+        dashboard.update_data(sensor_data);
+
         // Draw Dashboard directly to the display
-        // This requires Dashboard::draw to accept GC9D01
         dashboard.draw(&mut display).await.unwrap();
 
-        // Wait for a while before updating
+        // Wait for 1 second before the next update
         embassy_time::Timer::after_secs(1).await;
     }
 }

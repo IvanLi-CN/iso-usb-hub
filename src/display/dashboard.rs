@@ -38,36 +38,21 @@ const COLOR_POWER: Rgb565 = Rgb565::GREEN;
 
 // Dashboard struct, contains data to display
 pub struct Dashboard {
-    voltage_v: f32,
-    power_w1: f32,
-    power_w2: f32,
-    current_a1: f32,
-    current_a2: f32,
-    current_a3: f32,
+    // Data for 3 USB ports: (voltage, current, power)
+    port_data: [(f32, f32, f32); 3],
 }
 
 impl Dashboard {
     // Create new Dashboard instance
     pub fn new() -> Self {
         Self {
-            voltage_v: 0.0,
-            power_w1: 0.0,
-            power_w2: 0.0,
-            current_a1: 0.0,
-            current_a2: 0.0,
-            current_a3: 0.0,
+            port_data: [(0.0, 0.0, 0.0); 3],
         }
     }
 
-    // Update Dashboard display data
-    // Pass in order V, W1, W2, A1, A2, A3
-    pub fn update_data(&mut self, v: f32, w1: f32, w2: f32, a1: f32, a2: f32, a3: f32) {
-        self.voltage_v = v;
-        self.power_w1 = w1;
-        self.power_w2 = w2;
-        self.current_a1 = a1;
-        self.current_a2 = a2;
-        self.current_a3 = a3;
+    // Update Dashboard display data for 3 ports: [(V1, A1, W1), (V2, A2, W2), (V3, A3, W3)]
+    pub fn update_data(&mut self, data: [(f32, f32, f32); 3]) {
+        self.port_data = data;
     }
 
     // Draw Dashboard directly to the display driver using write_area
@@ -93,7 +78,9 @@ impl Dashboard {
 
         // Layout: 3 columns, 2 rows
         let col_width = screen_width / 3; // Approx 53
-        let row_height = screen_height / 2; // 20
+        let _row_height = screen_height / 3; // Approx 13 // Mark as unused
+        let row_spacing = 1; // Additional spacing between rows
+        let actual_row_height = FONT_8X12_HEIGHT + row_spacing; // 12 + 1 = 13
 
         // Buffer for character pixels (8x12)
         let mut char_pixel_buffer = [Rgb565::BLACK; FONT_8X12_WIDTH * FONT_8X12_HEIGHT]; // Updated constant names
@@ -148,26 +135,23 @@ impl Dashboard {
         // Draw values
         let mut buffer: [u8; 10] = [0; 10]; // Buffer for float to string conversion
 
-        // Row 1
-        let voltage_str = self.float_to_string(&mut buffer, self.voltage_v); // Use self.float_to_string
-        draw_string(display, &format!("{}V", voltage_str), col_width as usize, 0, COLOR_VOLTAGE, Rgb565::BLACK, &mut char_pixel_buffer).await?;
+        // Draw data for each port (column)
+        for i in 0..3 {
+            let _col_start_x = i * col_width; // Mark as unused
+            let col_right_edge_x = (i + 1) * col_width;
 
-        let power1_str = self.float_to_string(&mut buffer, self.power_w1); // Use self.float_to_string
-        draw_string(display, &format!("{}W", power1_str), (col_width * 2) as usize, 0, COLOR_POWER, Rgb565::BLACK, &mut char_pixel_buffer).await?;
+            // Draw Voltage (Row 1)
+            let voltage_str = self.float_to_string(&mut buffer, self.port_data[i].0);
+            draw_string(display, &format!("{}V", voltage_str), col_right_edge_x as usize, 0, COLOR_VOLTAGE, Rgb565::BLACK, &mut char_pixel_buffer).await?;
 
-        let power2_str = self.float_to_string(&mut buffer, self.power_w2); // Use self.float_to_string
-        draw_string(display, &format!("{}W", power2_str), screen_width as usize, 0, COLOR_POWER, Rgb565::BLACK, &mut char_pixel_buffer).await?;
+            // Draw Current (Row 2)
+            let current_str = self.float_to_string(&mut buffer, self.port_data[i].1);
+            draw_string(display, &format!("{}A", current_str), col_right_edge_x as usize, actual_row_height as usize, COLOR_CURRENT, Rgb565::BLACK, &mut char_pixel_buffer).await?;
 
-        // Row 2
-        let current1_str = self.float_to_string(&mut buffer, self.current_a1); // Use self.float_to_string
-        draw_string(display, &format!("{}A", current1_str), col_width as usize, row_height as usize, COLOR_CURRENT, Rgb565::BLACK, &mut char_pixel_buffer).await?;
-
-        let current2_str = self.float_to_string(&mut buffer, self.current_a2); // Use self.float_to_string
-        draw_string(display, &format!("{}A", current2_str), (col_width * 2) as usize, row_height as usize, COLOR_CURRENT, Rgb565::BLACK, &mut char_pixel_buffer).await?;
-
-        let current3_str = self.float_to_string(&mut buffer, self.current_a3); // Use self.float_to_string
-        draw_string(display, &format!("{}A", current3_str), screen_width as usize, row_height as usize, COLOR_CURRENT, Rgb565::BLACK, &mut char_pixel_buffer).await?;
-
+            // Draw Power (Row 3)
+            let power_str = self.float_to_string(&mut buffer, self.port_data[i].2);
+            draw_string(display, &format!("{}W", power_str), col_right_edge_x as usize, (actual_row_height * 2) as usize, COLOR_POWER, Rgb565::BLACK, &mut char_pixel_buffer).await?;
+        }
 
         Ok(())
     }
