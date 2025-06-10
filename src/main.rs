@@ -274,6 +274,6 @@ async fn main(_spawner: Spawner) {
         dashboard.draw(&mut display).await.unwrap();
 
         // Wait for 1 second before the next update
-        embassy_time::Timer::after_secs(1).await;
+        embassy_time::Timer::after_millis(100).await;
     }
 }
