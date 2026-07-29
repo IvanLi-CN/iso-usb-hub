@@ -136,9 +136,11 @@ None
 
 None
 
-## Visual Evidence (PR)
+## Visual Evidence
 
-- 真机串口日志截图或 LCD 自检页照片在 PR 阶段补入 `./assets/`。
+PR: none
+
+- LCD 自检页通过受控主机渲染验证；此规格不发布额外截图资源。
 
 ## 资产晋升（Asset promotion）
 
