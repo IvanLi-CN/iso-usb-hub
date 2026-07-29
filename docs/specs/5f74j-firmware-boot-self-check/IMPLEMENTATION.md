@@ -5,6 +5,7 @@
 - Boot self-check 状态模型、阶段日志、LCD 自检页和 runtime 门控已经落地。
 - 当前直连 I2C 板型保留 `mux` 槽位，但不再依赖 `PCA9545A`。
 - 输入电源不安全仍是 fatal；单路端口传感器异常按 degraded 记录。
+- 输入资格上限为 `28.0 V`；高于上限的输入以 `PowerInOvervoltage` / `VIN OVP` 作为可见 fatal 诊断。
 - 当前 V3 硬件下，前面板 `TCA6408A@0x21` 离线会在有限恢复失败后降级继续运行，仅禁用前面板按键任务。
 - 前面板离线时，启动日志会输出 I2C bus-clear 电平、`0x21` 分阶段探测、peer device 在线矩阵和故障分类，便于区分 MCU-only reset 后的 TCA 未复位、总线卡住和共享供电/I2C 异常。
 
@@ -13,6 +14,7 @@
 - 固件：`src/main.rs` boot self-check flow、gate decision、front-panel degraded path。
 - 固件：`src/boot_diag.rs` 自检状态、故障码与快照模型。
 - 固件：`src/power_in.rs` 输入电源启动探测。
+- 固件：`src/power_limits.rs` 输入电压范围判定与主机回归测试。
 - 文档：`docs/software_design.md` 与本 spec 记录当前启动口径。
 
 ## Remaining Gaps

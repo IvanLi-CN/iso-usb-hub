@@ -40,6 +40,7 @@ mod hub_sideband;
 mod mdns;
 mod network_runtime;
 mod power_in;
+mod power_limits;
 mod usb_jsonl;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -56,6 +57,7 @@ use boot_diag::{
     BootStage, GateDecision, SelfCheckItemState, SysCheck,
 };
 use hardware_snapshot as hwdiag;
+use power_limits::{classify_voltage, voltage_in_range, VoltageRange};
 
 // No global mutex in MVP
 
@@ -185,7 +187,7 @@ const SHUNT_RESISTANCE_OHMS: f32 = 0.005;
 // 开发阶段临时放宽：将 VIN 下限改为 4.5V 以便在 5V 供电/风扇台架下进行功能验证；
 // 量产应恢复到 9.0V 以避免 5–8V 区间误判上电（请在合入前复位该值）。
 const VIN_MIN_V: f32 = 4.5;
-const VIN_MAX_V: f32 = 24.0;
+const VIN_MAX_V: f32 = 28.0;
 // Current V3 bench baseline draws about 22-23 mA before IN_EN closes.
 // Keep a small margin above that so qualification reflects real hardware,
 // while still rejecting clearly abnormal startup load.
@@ -727,6 +729,7 @@ fn power_fault_tag(fault: BootFaultCode) -> u8 {
         BootFaultCode::PowerInUnavailable => 1,
         BootFaultCode::PowerInPgBad => 2,
         BootFaultCode::InaUnavailable => 3,
+        BootFaultCode::PowerInOvervoltage => 4,
         _ => 1,
     }
 }
@@ -736,12 +739,15 @@ fn power_fault_from_tag(tag: u8) -> BootFaultCode {
         0 => BootFaultCode::None,
         2 => BootFaultCode::PowerInPgBad,
         3 => BootFaultCode::InaUnavailable,
+        4 => BootFaultCode::PowerInOvervoltage,
         _ => BootFaultCode::PowerInUnavailable,
     }
 }
 
-fn infer_power_fault(pg_good: bool) -> BootFaultCode {
-    if pg_good {
+fn infer_power_fault(vin_v: f32, pg_good: bool) -> BootFaultCode {
+    if classify_voltage(vin_v, VIN_MIN_V, VIN_MAX_V) == VoltageRange::Overvoltage {
+        BootFaultCode::PowerInOvervoltage
+    } else if pg_good {
         BootFaultCode::PowerInUnavailable
     } else {
         BootFaultCode::PowerInPgBad
@@ -750,9 +756,7 @@ fn infer_power_fault(pg_good: bool) -> BootFaultCode {
 
 fn update_power_latest(vin_v: f32, pg_good: bool, ready: bool, fault_hint: Option<BootFaultCode>) {
     let vin_mv = (vin_v * 1000.0) as i32;
-    let vin_min_mv = (VIN_MIN_V * 1000.0) as i32;
-    let vin_max_mv = (VIN_MAX_V * 1000.0) as i32;
-    let runtime_ready = ready && pg_good && (vin_min_mv..=vin_max_mv).contains(&vin_mv);
+    let runtime_ready = ready && pg_good && voltage_in_range(vin_v, VIN_MIN_V, VIN_MAX_V);
     let previous_fault = power_fault_from_tag(POWER_LATEST_FAULT.load(Ordering::Relaxed));
     let fault = if runtime_ready {
         BootFaultCode::None
@@ -761,7 +765,7 @@ fn update_power_latest(vin_v: f32, pg_good: bool, ready: bool, fault_hint: Optio
     } else if previous_fault == BootFaultCode::InaUnavailable {
         previous_fault
     } else {
-        infer_power_fault(pg_good)
+        infer_power_fault(vin_v, pg_good)
     };
     POWER_LATEST_VIN_MV.store(vin_mv, Ordering::Relaxed);
     POWER_LATEST_PG_GOOD.store(pg_good, Ordering::Relaxed);
@@ -1789,7 +1793,7 @@ fn draw_boot_self_check_frame<D: embedded_graphics::draw_target::DrawTarget<Colo
         7,
     );
     draw_centered_text(disp, 92, 2, outcome_label(snapshot.outcome), head, 7);
-    draw_centered_text(disp, 137, 2, fault_label(snapshot.first_fault), head, 7);
+    draw_centered_text(disp, 134, 2, fault_label(snapshot.first_fault), head, 7);
 
     if ports_page {
         for (idx, slot) in snapshot.ports.iter().enumerate() {
