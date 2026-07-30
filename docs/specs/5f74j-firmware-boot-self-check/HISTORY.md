@@ -8,6 +8,7 @@
 - 为避免产品在当前硬件上卡在 `PANEL PEND`，V3 固件将前面板离线记录为 `Warn/FrontPanelOffline` 并继续 runtime；硬件缺陷已登记为 GitHub issue #18。
 - 在 `/dev/cu.usbmodem2123101` 的实机复验中，输入资格阶段测得 `INA226.CURRENT ≈ 22–23 mA`；原先 `10 mA` 的启动空载阈值会把当前 V3 板误判成 `VIN OFF/FATAL`。阈值现已调整到 `30 mA`，以匹配当前 V3 基线并恢复 runtime/USB JSONL bring-up。
 - 输入电压产品上限明确为 `28.0 V`。启动资格、运行期快照与自检诊断统一采用该严格边界；超过上限时以 `VIN OVP` 区分于一般 VIN 不可用或 PG 异常。
+- 运行期输入状态原先会在成功启动后保持 `vin_on=true`，即使后续采样已超过上限；过压处理现改为每 `100 ms` 重新判定、关闭并锁存输入开关，同时发布 `vin_on=false`，确保保护状态、日志和快照一致。
 
 ## Legacy Source
 

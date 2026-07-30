@@ -21,6 +21,8 @@ const INA226_ADDR: u8 = 0x44;
 // INA226 shunt voltage LSB = 2.5 uV per datasheet and crate constants.
 const INA226_SHUNT_LSB_V: f32 = 2.5e-6;
 const VIN_ADC_DIVIDER_RATIO: f32 = 11.0;
+const RUNTIME_PROTECT_INTERVAL_MS: u64 = 100;
+const RUNTIME_STATUS_INTERVAL_TICKS: u16 = 10_000 / RUNTIME_PROTECT_INTERVAL_MS as u16;
 
 pub type InaOp<'a, I2C> = ina226::INA226<&'a mut I2C, ina226::Operational>;
 pub type VinAdc = Adc<'static, ADC1<'static>, Blocking>;
@@ -297,8 +299,10 @@ async fn task(
     BOOTSTRAP_SIG.signal(bootstrap);
     VIN_ON_SIG.signal(vin_on_state.vin_on);
 
+    let mut input_switch_open = !vin_on_state.vin_on;
+    let mut status_interval_ticks = 0;
     loop {
-        let status = sample_status(
+        let mut status = sample_status(
             &mut ina,
             &in_pg,
             shunt_res_ohms,
@@ -306,21 +310,47 @@ async fn task(
             vin_on_state.vin_on,
         )
         .await;
-        info!(
-            "pwr.in:stat vin={}V i={}A pg={} vin_on={}",
-            status.vin_v,
-            status.i_a,
-            if status.pg_good { "good" } else { "bad" },
-            if status.vin_on { "true" } else { "false" }
-        );
-        if status.vin_on && !vin_on_state.vin_on {
+        let previous = RuntimeInputState {
+            vin_on: vin_on_state.vin_on,
+            switch_open: input_switch_open,
+        };
+        let next = advance_runtime_input_state(previous, status.vin_v, status.pg_good, limits);
+
+        if next.switch_open && !previous.switch_open {
+            hold_input_switch_open(&mut in_ce);
+            log_input_command(
+                "runtime-ovp-open",
+                &in_ce,
+                &in_pg,
+                read_vin_adc_mv(&mut vin_adc, &mut vin_adc_pin),
+            );
+            warn!("pwr.in:vin_ovp vin={}V; keep switch open", status.vin_v);
+        }
+        if !next.vin_on && previous.vin_on {
+            info!("pwr.in:vin_on=false vin={}V", status.vin_v);
+            VIN_ON_SIG.signal(false);
+        } else if next.vin_on && !previous.vin_on {
             info!("pwr.in:vin_on=true vin={}V pg=good", status.vin_v);
             VIN_ON_SIG.signal(true);
         }
-        vin_on_state.vin_on |= status.vin_on;
+        vin_on_state.vin_on = next.vin_on;
+        input_switch_open = next.switch_open;
+        status.vin_on = next.vin_on;
 
-        publish_status(status).await;
-        Timer::after(Duration::from_secs(10)).await;
+        if next.switch_open != previous.switch_open || status_interval_ticks == 0 {
+            info!(
+                "pwr.in:stat vin={}V i={}A pg={} vin_on={}",
+                status.vin_v,
+                status.i_a,
+                if status.pg_good { "good" } else { "bad" },
+                if status.vin_on { "true" } else { "false" }
+            );
+            publish_status(status).await;
+            status_interval_ticks = RUNTIME_STATUS_INTERVAL_TICKS;
+        } else {
+            status_interval_ticks -= 1;
+        }
+        Timer::after(Duration::from_millis(RUNTIME_PROTECT_INTERVAL_MS)).await;
     }
 }
 
@@ -388,6 +418,37 @@ struct VinOnResult {
     vin_on: bool,
     last_vbus_v: f32,
     last_pg_good: bool,
+}
+
+#[derive(Copy, Clone)]
+struct RuntimeInputState {
+    vin_on: bool,
+    switch_open: bool,
+}
+
+fn advance_runtime_input_state(
+    state: RuntimeInputState,
+    vin_v: f32,
+    pg_good: bool,
+    limits: Limits,
+) -> RuntimeInputState {
+    if classify_voltage(vin_v, limits.vin_min_v, limits.vin_max_v) == VoltageRange::Overvoltage {
+        RuntimeInputState {
+            vin_on: false,
+            switch_open: true,
+        }
+    } else if !state.switch_open
+        && !state.vin_on
+        && pg_good
+        && voltage_in_range(vin_v, limits.vin_min_v, limits.vin_max_v)
+    {
+        RuntimeInputState {
+            vin_on: true,
+            switch_open: false,
+        }
+    } else {
+        state
+    }
 }
 
 async fn wait_vin_on<I2C: I2c>(
