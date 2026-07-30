@@ -14,6 +14,7 @@ use esp_hal::Blocking;
 use ina226_tp as ina226;
 
 use crate::boot_diag::{BootFaultCode, SelfCheckItemState};
+use crate::power_limits::{classify_voltage, voltage_in_range, VoltageRange};
 use crate::I2cBus;
 
 const INA226_ADDR: u8 = 0x44;
@@ -36,7 +37,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             vin_min_v: 9.0,
-            vin_max_v: 24.0,
+            vin_max_v: 28.0,
             idle_current_max_a: 0.030,
         }
     }
@@ -238,11 +239,7 @@ async fn task(
         let status = sample_status(&mut ina, &in_pg, shunt_res_ohms, limits, false).await;
         BOOTSTRAP_SIG.signal(BootstrapStatus {
             state: SelfCheckItemState::Fatal,
-            fault: if status.pg_good {
-                BootFaultCode::PowerInUnavailable
-            } else {
-                BootFaultCode::PowerInPgBad
-            },
+            fault: input_fault(status.vin_v, status.pg_good, limits),
             vin_v: status.vin_v,
             pg_good: status.pg_good,
             ready: false,
@@ -291,11 +288,7 @@ async fn task(
     } else {
         BootstrapStatus {
             state: SelfCheckItemState::Fatal,
-            fault: if vin_on_state.last_pg_good {
-                BootFaultCode::PowerInUnavailable
-            } else {
-                BootFaultCode::PowerInPgBad
-            },
+            fault: input_fault(vin_on_state.last_vbus_v, vin_on_state.last_pg_good, limits),
             vin_v: vin_on_state.last_vbus_v,
             pg_good: vin_on_state.last_pg_good,
             ready: false,
@@ -342,7 +335,7 @@ async fn sample_status<I2C: I2c>(
     let vshunt_v = read_signed_shunt_voltage(ina).await;
     let i_a = vshunt_v / shunt_res_ohms;
     let pg_good = in_pg.is_high();
-    let vin_range_ok = (limits.vin_min_v..=limits.vin_max_v).contains(&vin_v);
+    let vin_range_ok = voltage_in_range(vin_v, limits.vin_min_v, limits.vin_max_v);
 
     Status {
         vin_v,
@@ -375,7 +368,7 @@ async fn qualify_startup<I2C: I2c>(
         let vbus_v = ina.read_voltage().await as f32;
         let vshunt_v = read_signed_shunt_voltage(ina).await;
         let ishunt_a = vshunt_v / shunt_res_ohms;
-        let range_ok = (limits.vin_min_v..=limits.vin_max_v).contains(&vbus_v);
+        let range_ok = voltage_in_range(vbus_v, limits.vin_min_v, limits.vin_max_v);
         let current_ok = ishunt_a.abs() <= limits.idle_current_max_a;
         info!(
             "pwr.in:qual vbus={}V i={}A range_ok={} current_ok={}",
@@ -413,7 +406,7 @@ async fn wait_vin_on<I2C: I2c>(
         let vbus_v = ina.read_voltage().await as f32;
         last_vbus_v = vbus_v;
         last_pg_good = pg_good;
-        let range_ok = (limits.vin_min_v..=limits.vin_max_v).contains(&vbus_v);
+        let range_ok = voltage_in_range(vbus_v, limits.vin_min_v, limits.vin_max_v);
         if pg_good && range_ok {
             vin_on = true;
             break;
@@ -435,6 +428,16 @@ async fn wait_vin_on<I2C: I2c>(
         vin_on,
         last_vbus_v,
         last_pg_good,
+    }
+}
+
+fn input_fault(vin_v: f32, pg_good: bool, limits: Limits) -> BootFaultCode {
+    if classify_voltage(vin_v, limits.vin_min_v, limits.vin_max_v) == VoltageRange::Overvoltage {
+        BootFaultCode::PowerInOvervoltage
+    } else if pg_good {
+        BootFaultCode::PowerInUnavailable
+    } else {
+        BootFaultCode::PowerInPgBad
     }
 }
 

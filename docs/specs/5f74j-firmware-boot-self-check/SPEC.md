@@ -46,6 +46,7 @@
 
 - 启动期关键检查必须输出 `boot.stage:*`、`boot.check:*`、`boot.summary:*` 日志。
 - 输入电源链路异常时必须保持 `IN_EN` 关闭，并停留在 fatal 自检页。
+- 输入资格仅接受 `INA226.VBUS ≤ 28.0 V`；超过上限时必须报告 `PowerInOvervoltage` / `VIN OVP`，并保持 `IN_EN` 关闭。
 - 当前 V3 硬件下，前面板缺失时必须在有限恢复失败后标记 `Warn/FrontPanelOffline`，禁用前面板输入任务，并继续进入 dashboard/runtime。
 - 当前直连 I²C 板型下，端口自检失败只记录诊断，不得单独阻断该路输出；只要总输入 `OK`，自检完成后统一放行 `EN1..EN4`。
 - boot self-check 必须保留 `mux` 槽位，以兼容后续硬件版本恢复 `PCA9545A`。
@@ -72,6 +73,7 @@
 
 - 当前板型无 `PCA9545A`：记录 `boot.check: name=mux state=skip fault=-`，端口扫描继续进行。
 - VIN 不可用或 PG 不良：标记系统项 `Fatal`，不进入端口初始化，不放行 runtime。
+- `INA226.VBUS > 28.0 V`：标记系统项 `Fatal/PowerInOvervoltage`，启动日志、LCD 与硬件快照使用 `VIN OVP`，不放行 runtime。
 - Front panel 离线：当前 V3 硬件下标记 `Warn/FrontPanelOffline`，只禁用 panel 功能。
 - Front panel 离线诊断：固件必须记录 bus-clear 前后 SDA/SCL 电平、`0x21` 输入寄存器读取结果、ACK fallback、`front INT` 电平，以及 `0x20/0x44/0x70` peer device 在线矩阵。
 - 单路端口若 `INA226`/`TMP112` 缺失：标记对应端口 `Err`，但只影响诊断与该路运行期测量，不阻断统一输出放行。
@@ -98,6 +100,7 @@ None
 - Given MCU-only reset 后 `TCA6408A@0x21` 不响应，When front panel 自检失败，Then 日志包含 `i2c.front_probe:*`、`i2c.front_diag:*` 和分类结果，可区分 bus stuck、front TCA only offline、shared I2C offline or power。
 - Given 单路输出模块缺少 `INA226` 或 `TMP112`，When 固件启动且总输入 `OK`，Then 该路记为 `Err`，但 `EN1..EN4` 仍在自检结束后统一放行。
 - Given 输入电源资格失败或 PG 不良，When 固件启动，Then `IN_EN` 保持关闭且 LCD 常驻 fatal 自检页。
+- Given `INA226.VBUS` 高于 `28.0 V`，When 固件启动，Then `IN_EN` 保持关闭，且启动日志、LCD 与硬件快照报告 `VIN OVP`。
 - Given 当前验证基线中的通道 4 模块接入，When 固件启动，Then 端口 4 按 `INA226@0x43 + TMP112@0x4B` 识别并可报告 `boot.check: name=port4 state=ok fault=-`。
 
 ## 实现前置条件（Definition of Ready / Preconditions）
@@ -133,9 +136,11 @@ None
 
 None
 
-## Visual Evidence (PR)
+## Visual Evidence
 
-- 真机串口日志截图或 LCD 自检页照片在 PR 阶段补入 `./assets/`。
+PR: none
+
+- LCD 自检页通过受控主机渲染验证；此规格不发布额外截图资源。
 
 ## 资产晋升（Asset promotion）
 

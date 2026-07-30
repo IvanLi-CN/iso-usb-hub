@@ -41,7 +41,7 @@
 - 统一状态口径：
   - `SelfCheckItemState = Pending / Ok / Warn / Err / Fatal / Skipped`
   - `BootOutcome = Ok / Degraded / Fatal`
-  - `BootFaultCode` 覆盖 `MuxOffline`、`PowerInUnavailable`、`PowerInPgBad`、`InaUnavailable`、`FrontPanelOffline`、`FanUnavailable` 以及按端口编号的配对/保护/超时故障。
+  - `BootFaultCode` 覆盖 `MuxOffline`、`PowerInUnavailable`、`PowerInPgBad`、`PowerInOvervoltage`、`InaUnavailable`、`FrontPanelOffline`、`FanUnavailable` 以及按端口编号的配对/保护/超时故障。
 - 默认策略是“只读探测 + 分级降级”：
   - 缺模块、单路异常优先降级；
   - 当前 V3 硬件下，front panel 离线在有限恢复失败后降级继续运行；
@@ -189,6 +189,7 @@ boot self-check 采用固定顺序，避免不同模块各自抢总线与各说�
   - 四路端口全部 `Skipped`；
   - `GateDecision.allow_runtime_tasks=false`；
   - LCD 停留在 fatal 自检页。
+  - 若 `INA226.VBUS > 28.0 V`，故障码为 `PowerInOvervoltage`，串口、LCD 与硬件快照显示 `VIN OVP`。
 - 通道传感器缺失（`INA226/TMP112` 不齐）：
   - 打印 `warn`；
   - 标记对应通道 `Err`；
@@ -302,8 +303,8 @@ boot self-check 采用固定顺序，避免不同模块各自抢总线与各说�
 
 - 触发条件：上电启动阶段、闭合输入开关之前执行，短暂重试（~5 次，20 ms 间隔）。
 - 计算：
-  - 生产阈值（规范）：`9.0 V ≤ INA226.VBUS ≤ 24.0 V`；
-  - 当前固件（开发分支）：`4.5 V ≤ INA226.VBUS ≤ 24.0 V`；
+  - 生产阈值（规范）：`9.0 V ≤ INA226.VBUS ≤ 28.0 V`；
+  - 当前固件（开发分支）：`4.5 V ≤ INA226.VBUS ≤ 28.0 V`；
 - `current_ok`：`|INA226.CURRENT| ≤ 30 mA`；
   - `ok_to_close = range_ok && current_ok`。
 - 日志：每次读取打印一行 `info`：`pwr.in:qual vbus=..V i=..A range_ok= current_ok=`。
@@ -331,11 +332,11 @@ boot self-check 采用固定顺序，避免不同模块各自抢总线与各说�
 ### 2.3 边界与错误处理
 
 - `INA226`/`VIN_ADC` 读数失败：本周期忽略数值、输出一次 `warn`，维持上次有效判定；
-- 越界保护：若 `INA226.VBUS < 0V` 或 `> 80V`（量程外）视为无效，输出 `error`。
+- 越界保护：若 `INA226.VBUS > 28.0 V`，视为输入过压，保持输入开关关闭并报告 `VIN OVP`。
 
 ### 2.4 精度与阈值
 
-- 生产电压范围阈值：9.0 V 与 24.0 V；
+- 生产电压范围阈值：9.0 V 与 28.0 V；
 - 开发阶段（当前分支）临时阈值：`VIN_MIN_V = 4.5 V`（为 5V 台架测试放宽）；
 - 当前 V3 板启动资格电流阈值：`I_IDLE_MAX_A = 30 mA`；
   - 依据：当前 V3 基线板在 `IN_EN` 闭合前的实测空载电流约为 `22–23 mA`；
