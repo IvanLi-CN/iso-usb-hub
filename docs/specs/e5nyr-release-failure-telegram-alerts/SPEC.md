@@ -46,7 +46,7 @@ The repository MUST provide a repeatable workflow contract test covering the pin
 
 ### VER-E5NYR-002: Documentation contract
 
-- Method: `spec_contract_check.py`, `spec_drift_check.sh`, and markdownlint cover: `REQ-E5NYR-002`, `REQ-E5NYR-003`, `REQ-E5NYR-004`, `REQ-E5NYR-005`, `REQ-E5NYR-006`.
+- Method: the shared Spec drift gate and markdownlint cover: `REQ-E5NYR-002`, `REQ-E5NYR-003`, `REQ-E5NYR-004`, `REQ-E5NYR-005`, `REQ-E5NYR-006`.
 
 ### VER-E5NYR-003: Repository validation
 

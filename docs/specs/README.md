@@ -88,7 +88,7 @@
 | j6nvw | 硬件 V3 引脚与显示链路对齐 | 部分完成（2/3） | `j6nvw-hardware-v3-pin-assignment/SPEC.md` | 2026-04-27 | legacy `docs/plan/j6nvw-hw-v3-pin-assignment/**` 删除待确认 |
 | h8c4s | CH335F sideband 电源控制 | 部分完成（2/3） | `h8c4s-ch335f-sideband-power-control/SPEC.md` | 2026-06-13 | 固件与上游侧 p1/p3/p4 控制已验证；命名已对齐到 `isolarail` / 上游侧语义；PWREN1#/2# 硬件缺陷见 issue #18 |
 | 7gf6b | 固件蜂鸣器音效 | 已完成 | `7gf6b-firmware-buzzer-audio/SPEC.md` | 2026-07-05 | PR #25 |
-| e5nyr | 发布失败 Telegram 告警接入 | 已完成 | `e5nyr-release-failure-telegram-alerts/SPEC.md` | 2026-07-07 | 覆盖范围扩展到 `Site Publish` 部署失败；GitHub Pages settings 仍需 owner 侧启用 Actions source |
+| e5nyr | 发布失败 Telegram 告警接入 | 已完成 | `e5nyr-release-failure-telegram-alerts/SPEC.md` | 2026-09-01 | 发布/部署失败与手动 smoke 已迁移到 Oidrune `notify.yml@e48822f99c6402a753ed86557ea029754cbab20b`；GitHub Pages settings 仍需 owner 侧启用 Actions source |
 | q9d7h | CLI/devd 烧录迁移 | 部分完成（3/4） | `q9d7h-cli-devd-flash-migration/SPEC.md` | 2026-07-04 | source workflow 已完成，旧烧录入口已退役；真机 flash-monitor 验证待硬件确认 |
 | r6wfr | 文档 Web 站点 | 已实现 / 待外部切流 | `r6wfr-docs-site/SPEC.md` | 2026-07-05 | Rspress/Bun 双语 docs-site，`web/` 根站点 + `/docs/` 子站点组合发布到 EdgeOne / GitHub Pages |
 | n8x4q | 硬件底层详细信息快照接口 | 部分完成（4/5） | `n8x4q-hardware-diag-snapshot/SPEC.md` | 2026-07-05 | 真机串口端到端验证待硬件接入 |

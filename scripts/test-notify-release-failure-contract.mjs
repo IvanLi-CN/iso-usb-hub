@@ -28,6 +28,11 @@ function assertSummaryContract(block, targetSha, result) {
   assert.match(block, new RegExp(`result: ${result}`));
   assert.match(block, new RegExp(`target_sha: ${targetSha}`));
   assert.match(block, /run_url: /);
+  assert.match(block, /workflow: /);
+  assert.match(block, /ref: /);
+  assert.match(block, /attempt: /);
+  assert.match(block, /actor: /);
+  assert.match(block, /event: /);
 }
 
 assert.equal(
@@ -56,6 +61,10 @@ assertSummaryContract(
   "\\$\\{\\{ github\\.event\\.workflow_run\\.conclusion \\}\\}",
 );
 assert.match(failureJob, /github\.event\.workflow_run\.name == 'Site Publish'/);
+assert.match(failureJob, /'IsolaRail Site Publish deployment failure'/);
+assert.match(failureJob, /'IsolaRail release workflow failure'/);
+assert.match(failureJob, /'Site Publish deployment failed'/);
+assert.match(failureJob, /'Release workflow failed'/);
 
 const smokeJob = jobBlock("smoke_test");
 assert.match(smokeJob, /if: \$\{\{ github\.event_name == 'workflow_dispatch' \}\}/);
