@@ -79,8 +79,9 @@ This project contains GitHub Actions workflows for automated building, combined 
 
 **Features:**
 
-- Sends Telegram/Shoutrrr alerts through the shared `github-workflows` reusable workflow
-- Reports repository, workflow, conclusion, branch, SHA, attempt, actor, event, and run URL
+- Sends Oidrune workflow-completed events through the pinned Oidrune reusable workflow
+- Supplies the repository, workflow, result, branch, target SHA, attempt, actor, event, and run URL in the caller-generated summary
+- Uses the default Oidrune gateway with caller-side OIDC permission; no Telegram secret is passed
 - Keeps alert delivery in a sidecar workflow instead of embedding notification logic in release or deploy jobs
 
 **Purpose:** Notify maintainers when release or site deployment workflows fail

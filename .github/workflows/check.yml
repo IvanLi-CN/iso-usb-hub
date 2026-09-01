@@ -18,6 +18,9 @@ jobs:
       with:
         submodules: 'recursive'
 
+    - name: Test workflow contracts
+      run: node scripts/test-notify-release-failure-contract.mjs
+
     - name: Install Rust toolchain for Xtensa (ESP32-S3)
       uses: esp-rs/xtensa-toolchain@v1.5
       with:
