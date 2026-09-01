@@ -11,3 +11,4 @@
 - 将失败与 smoke 两条调用迁移到 Oidrune `notify.yml`，改为传递 `outcome` 与 caller-generated `summary`。
 - 补齐 caller 的 `id-token: write` 权限，移除旧 `github-workflows` target 与 `SHOUTRRR_URL` secret 传递，并保留 Site Publish 非 PR 过滤语义。
 - 新增并接入 workflow contract test，覆盖 pinned SHA、summary、权限、过滤和 smoke 路径。
+- 本次迁移通过 PR #40 交付，当前 head 为 `1288c5acd88b66cfa0e2627191a2cf445011d39f`。
