@@ -19,6 +19,7 @@
     "docs:dev": "bun run --cwd docs-site dev",
     "docs:build": "bun run --cwd docs-site build",
     "docs:preview": "bun run --cwd docs-site preview",
-    "site:assemble": "node scripts/assemble-site-artifact.mjs"
+    "site:assemble": "node scripts/assemble-site-artifact.mjs",
+    "test:workflow-contract": "node scripts/test-notify-release-failure-contract.mjs"
   }
 }

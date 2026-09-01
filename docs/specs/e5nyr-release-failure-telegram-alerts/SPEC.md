@@ -1,49 +1,61 @@
 # 发布失败 Telegram 告警接入
 
-## 背景
+## Context and Scope
 
-仓库当前已有 `Release`、`Development Release` 与 `Site Publish` 等交付流，但发布或部署失败时如果没有统一的 Telegram 主动告警，容易在无人值守时错过失败。
+仓库通过 `.github/workflows/notify-release-failure.yml` 为 `Release`、`Development Release` 与 `Site Publish` 提供发布/部署失败告警，并保留 repo-local 的手动 smoke test 入口。
 
-## 目标
+本主题只定义 notifier sidecar 与 Oidrune reusable workflow 的调用契约，不改动发布逻辑、版本策略或产物内容，也不新增第二套通知渠道。调用目标固定为 `IvanLi-CN/oidrune/.github/workflows/notify.yml@e48822f99c6402a753ed86557ea029754cbab20b`，由调用方提供 OIDC 权限和完整 summary。
 
-- 为正式发布、开发发布与文档站部署失败统一接入 Telegram 告警。
-- 保留一个 repo-local 的手动 smoke test 入口，便于后续 secret 轮换或链路排障。
+失败通知覆盖 `Release`、`Development Release` 以及非 PR 的 `Site Publish`；普通 PR CI 不在通知范围内。手动 `workflow_dispatch` 仅用于发送 smoke summary，本地与 PR 验证不得触发真实通知。
 
-## 非目标
+## Requirements
 
-- 不改动现有发布逻辑、版本策略或产物内容。
-- 不新增第二套通知渠道。
+### REQ-E5NYR-001: Failure event scope
 
-## 范围
+The notifier MUST listen for completed `Release`, `Development Release`, and `Site Publish` workflow runs, and MUST notify only when the conclusion is `failure`. It MUST exclude `Site Publish` runs whose event is `pull_request`.
 
-- 维护 `.github/workflows/notify-release-failure.yml` 作为发布/部署失败通知 sidecar。
-- 复用 `IvanLi-CN/github-workflows/.github/workflows/release-failure-telegram.yml@main` 发送 Telegram。
-- 依赖 repo secret `SHOUTRRR_URL`。
+### REQ-E5NYR-002: Pinned Oidrune target
 
-## 需求列表
+Both notification jobs MUST call `IvanLi-CN/oidrune/.github/workflows/notify.yml@e48822f99c6402a753ed86557ea029754cbab20b`. No reusable workflow call may use `@main`.
 
-### MUST
+### REQ-E5NYR-003: OIDC permission
 
-- 监听 `Release`、`Development Release` 与非 PR `Site Publish` workflow 的失败结果。
-- 手动触发 `notify-release-failure.yml` 时发送 smoke test 消息。
-- 显式把 `SHOUTRRR_URL` 传给共享 reusable workflow。
+The caller MUST provide `id-token: write` permission to the reusable workflow jobs.
 
-### SHOULD
+### REQ-E5NYR-004: Default gateway boundary
 
-- 告警消息包含仓库、workflow、状态、分支、SHA、attempt、actor、run URL。
+The caller MUST omit `gateway_url` and `oidc_audience` so the pinned Oidrune workflow uses its default gateway and audience. The caller MUST NOT pass the legacy `SHOUTRRR_URL` secret or any other Telegram secret.
 
-## 验收标准
+### REQ-E5NYR-005: Complete failure summary
 
-- Given `Release`、`Development Release` 或非 PR `Site Publish` 失败，When workflow 结束，Then `Notify failed release` 自动发送 Telegram 告警。
-- Given 在默认分支手动触发 `notify-release-failure.yml`，When workflow 成功结束，Then Telegram 收到 smoke test 消息。
+The failure path MUST pass `outcome: failure` and a caller-generated summary containing a failure title, project name, status/result, target SHA, run URL, workflow, ref, attempt, actor, and event. `Site Publish` failures MUST retain deployment-specific title and note semantics.
 
-## 文档更新
+### REQ-E5NYR-006: Manual smoke path
 
-- 更新 `docs/specs/README.md` 索引。
+The `workflow_dispatch` path MUST run only the smoke job and MUST pass `outcome: failure` with a caller-generated summary titled `IsolaRail notifier smoke test`. The summary MUST include the project name, smoke status/result, current SHA, run URL, workflow, ref, attempt, actor, and event.
 
-## 实现里程碑
+### REQ-E5NYR-007: Contract coverage
 
-- [x] 新增 repo-local notifier wrapper。
-- [x] 配置 repo secret `SHOUTRRR_URL`。
-- [x] 合并后验证 smoke test。
-- [x] 将 `Site Publish` 部署失败纳入同一通知 sidecar。
+The repository MUST provide a repeatable workflow contract test covering the pinned target, legacy target/secret removal, OIDC permission, summary fields, failure filter, ordinary PR exclusion, and manual smoke path.
+
+## Verification
+
+### VER-E5NYR-001: Static workflow contract
+
+- Method: `actionlint` and the workflow contract test cover: `REQ-E5NYR-001`, `REQ-E5NYR-002`, `REQ-E5NYR-003`, `REQ-E5NYR-004`, `REQ-E5NYR-005`, `REQ-E5NYR-006`, `REQ-E5NYR-007`.
+
+### VER-E5NYR-002: Documentation contract
+
+- Method: the shared Spec drift gate and markdownlint cover: `REQ-E5NYR-002`, `REQ-E5NYR-003`, `REQ-E5NYR-004`, `REQ-E5NYR-005`, `REQ-E5NYR-006`.
+
+### VER-E5NYR-003: Repository validation
+
+- Method: repository `cargo check` and `cargo build --release` cover: `REQ-E5NYR-001`, `REQ-E5NYR-007`.
+
+### VER-E5NYR-004: Delivery safety
+
+- Method: PR CI freshness and manual inspection confirm that no `workflow_dispatch` smoke run, real Telegram/Oidrune notification, or Oidrune control-plane change is performed during migration; covers: `REQ-E5NYR-004`, `REQ-E5NYR-006`.
+
+## Related ADRs
+
+None
